@@ -1,26 +1,31 @@
 {
   "version": 2,
   "functions": {
-    "api/*.js": {
+    "api/yt.js": {
       "maxDuration": 30,
       "memory": 1024
+    },
+    "api/insta.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
+    "api/pin.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
+    "api/health.js": {
+      "maxDuration": 10
     }
   },
-  "routes": [
+  "headers": [
     {
-      "src": "/api/yt",
-      "methods": ["GET", "POST"],
-      "dest": "/api/yt.js"
-    },
-    {
-      "src": "/api/insta",
-      "methods": ["GET", "POST"],
-      "dest": "/api/insta.js"
-    },
-    {
-      "src": "/api/pin",
-      "methods": ["GET", "POST"],
-      "dest": "/api/pin.js"
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" }
+      ]
     }
   ]
 }
