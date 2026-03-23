@@ -1,6 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-const cheerio = require('cheerio');
 
 const app = express();
 app.use(require('cors')());
@@ -15,53 +14,31 @@ const DEV_INFO = {
   github: "Uchihaobito2010"
 };
 
-// ============= INSTAGRAM IMAGE ENDPOINT =============
-// For images only: /api/insta?p={url}
+// Instagram Image Endpoint
 app.get('/api/insta', async (req, res) => {
   try {
     const url = req.query.p || req.query.url;
     if (!url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Please provide Instagram URL using ?p= parameter for images', 
-        developer: DEV_INFO,
-        usage: '/api/insta?p=https://www.instagram.com/p/CODE/'
-      });
+      return res.status(400).json({ success: false, error: 'Please provide Instagram URL', developer: DEV_INFO });
     }
-
     const result = await downloadInstagramImage(url);
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message, 
-      developer: DEV_INFO 
-    });
+    res.status(500).json({ success: false, error: error.message, developer: DEV_INFO });
   }
 });
 
-// ============= INSTAGRAM VIDEO ENDPOINT =============
-// For videos only: /api/insta?v={url}
+// Instagram Video Endpoint
 app.get('/api/insta/video', async (req, res) => {
   try {
     const url = req.query.v || req.query.url;
     if (!url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Please provide Instagram URL using ?v= parameter for videos', 
-        developer: DEV_INFO,
-        usage: '/api/insta/video?v=https://www.instagram.com/reel/CODE/'
-      });
+      return res.status(400).json({ success: false, error: 'Please provide Instagram video URL', developer: DEV_INFO });
     }
-
     const result = await downloadInstagramVideo(url);
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message, 
-      developer: DEV_INFO 
-    });
+    res.status(500).json({ success: false, error: error.message, developer: DEV_INFO });
   }
 });
 
@@ -70,20 +47,12 @@ app.post('/api/insta', async (req, res) => {
   try {
     const url = req.body.p || req.body.url;
     if (!url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Please provide Instagram URL for images', 
-        developer: DEV_INFO 
-      });
+      return res.status(400).json({ success: false, error: 'Please provide Instagram URL', developer: DEV_INFO });
     }
     const result = await downloadInstagramImage(url);
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message, 
-      developer: DEV_INFO 
-    });
+    res.status(500).json({ success: false, error: error.message, developer: DEV_INFO });
   }
 });
 
@@ -91,178 +60,142 @@ app.post('/api/insta/video', async (req, res) => {
   try {
     const url = req.body.v || req.body.url;
     if (!url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Please provide Instagram URL for videos', 
-        developer: DEV_INFO 
-      });
+      return res.status(400).json({ success: false, error: 'Please provide Instagram video URL', developer: DEV_INFO });
     }
     const result = await downloadInstagramVideo(url);
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message, 
-      developer: DEV_INFO 
-    });
+    res.status(500).json({ success: false, error: error.message, developer: DEV_INFO });
   }
 });
 
-// Instagram Image Downloader
 async function downloadInstagramImage(url) {
   try {
-    url = url.split('?')[0];
-    if (!url.startsWith('http')) url = 'https://' + url;
+    // Using public Instagram downloader API
+    const response = await axios.get(`https://api.instagram.com/oembed/?url=${encodeURIComponent(url)}`);
     
-    const shortcode = extractShortcode(url);
-    if (!shortcode) throw new Error('Invalid Instagram URL');
+    if (response.data && response.data.thumbnail_url) {
+      return {
+        title: response.data.title || 'Instagram Image',
+        type: 'image',
+        images: [{
+          url: response.data.thumbnail_url,
+          quality: 'HD'
+        }],
+        count: 1,
+        download_url: response.data.thumbnail_url
+      };
+    }
     
-    const images = [];
-    let title = 'Instagram Image';
-    
-    // Method 1: Instagram API
+    throw new Error('No image found');
+  } catch (error) {
+    // Backup method using different API
     try {
-      const response = await axios.get(`https://www.instagram.com/p/${shortcode}/?__a=1&__d=1`, {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-        timeout: 10000
+      const shortcode = extractShortcode(url);
+      if (!shortcode) throw new Error('Invalid URL');
+      
+      const response = await axios.get(`https://www.instagram.com/p/${shortcode}/?__a=1`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
       });
       
       const data = response.data.graphql.shortcode_media;
-      title = data.edge_media_to_caption.edges[0]?.node?.text || 'Instagram Image';
+      const images = [];
       
-      // Single image
       if (data.__typename === 'GraphImage' && data.display_url) {
-        images.push({
-          url: data.display_url,
-          quality: 'HD'
-        });
+        images.push({ url: data.display_url, quality: 'HD' });
       }
       
-      // Carousel images
       if (data.__typename === 'GraphSidecar') {
         data.edge_sidecar_to_children.edges.forEach(edge => {
           if (edge.node.__typename === 'GraphImage') {
-            images.push({
-              url: edge.node.display_url,
-              quality: 'HD'
-            });
+            images.push({ url: edge.node.display_url, quality: 'HD' });
           }
         });
       }
       
-    } catch (err) {}
+      if (images.length > 0) {
+        return {
+          title: data.edge_media_to_caption.edges[0]?.node?.text || 'Instagram Image',
+          type: 'image',
+          images: images,
+          count: images.length,
+          download_urls: images.map(img => img.url)
+        };
+      }
+    } catch (backupError) {}
     
-    // Method 2: oEmbed
-    if (images.length === 0) {
-      try {
-        const response = await axios.get(`https://api.instagram.com/oembed/?url=${encodeURIComponent(url)}`);
-        if (response.data && response.data.thumbnail_url) {
-          images.push({
-            url: response.data.thumbnail_url,
-            quality: 'HD'
-          });
-          title = response.data.title || 'Instagram Image';
-        }
-      } catch (err) {}
-    }
-    
-    if (images.length === 0) {
-      throw new Error('No images found in this post');
-    }
-    
-    return {
-      title: title,
-      type: 'image',
-      images: images,
-      count: images.length,
-      shortcode: shortcode,
-      download_urls: images.map(img => img.url)
-    };
-    
-  } catch (error) {
-    throw new Error(`Image download failed: ${error.message}`);
+    throw new Error('Failed to download Instagram image');
   }
 }
 
-// Instagram Video Downloader
 async function downloadInstagramVideo(url) {
   try {
-    url = url.split('?')[0];
-    if (!url.startsWith('http')) url = 'https://' + url;
+    // Using public Instagram video downloader API
+    const apiUrl = `https://tikwm.com/api/instagram?url=${encodeURIComponent(url)}`;
+    const response = await axios.get(apiUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 15000
+    });
     
-    const shortcode = extractShortcode(url);
-    if (!shortcode) throw new Error('Invalid Instagram URL');
+    if (response.data && response.data.data && response.data.data.play) {
+      return {
+        title: response.data.data.title || 'Instagram Video',
+        type: 'video',
+        url: response.data.data.play,
+        quality: 'HD',
+        thumbnail: response.data.data.cover,
+        download_url: response.data.data.play
+      };
+    }
     
-    let videoUrl = null;
-    let title = 'Instagram Video';
-    let thumbnail = null;
-    
-    // Method 1: Instagram API
+    throw new Error('No video found');
+  } catch (error) {
+    // Backup method using Instagram API
     try {
-      const response = await axios.get(`https://www.instagram.com/p/${shortcode}/?__a=1&__d=1`, {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-        timeout: 10000
+      const shortcode = extractShortcode(url);
+      if (!shortcode) throw new Error('Invalid URL');
+      
+      const response = await axios.get(`https://www.instagram.com/p/${shortcode}/?__a=1`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
       });
       
       const data = response.data.graphql.shortcode_media;
-      title = data.edge_media_to_caption.edges[0]?.node?.text || 'Instagram Video';
       
-      // Single video
-      if (data.__typename === 'GraphVideo' && data.video_url) {
-        videoUrl = data.video_url;
-        thumbnail = data.thumbnail_src;
+      if (data.is_video && data.video_url) {
+        return {
+          title: data.edge_media_to_caption.edges[0]?.node?.text || 'Instagram Video',
+          type: 'video',
+          url: data.video_url,
+          quality: 'HD',
+          thumbnail: data.thumbnail_src,
+          download_url: data.video_url
+        };
       }
       
-      // Reel video
-      if (data.__typename === 'GraphReel' && data.video_url) {
-        videoUrl = data.video_url;
-        thumbnail = data.thumbnail_src;
-      }
-      
-      // Carousel video
+      // Check carousel for video
       if (data.__typename === 'GraphSidecar') {
         for (const edge of data.edge_sidecar_to_children.edges) {
-          if (edge.node.__typename === 'GraphVideo' && edge.node.video_url) {
-            videoUrl = edge.node.video_url;
-            thumbnail = edge.node.thumbnail_src;
-            break;
+          if (edge.node.is_video && edge.node.video_url) {
+            return {
+              title: 'Instagram Video',
+              type: 'video',
+              url: edge.node.video_url,
+              quality: 'HD',
+              thumbnail: edge.node.thumbnail_src,
+              download_url: edge.node.video_url
+            };
           }
         }
       }
-      
-    } catch (err) {}
+    } catch (backupError) {}
     
-    // Method 2: Alternative API
-    if (!videoUrl) {
-      try {
-        const response = await axios.post('https://v3.instadownloader.online/api/ajaxSearch', 
-          new URLSearchParams({ q: url, t: 'media', lang: 'en' }),
-          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-        );
-        
-        if (response.data?.data?.video) {
-          videoUrl = response.data.data.video;
-          title = response.data.title || 'Instagram Video';
-        }
-      } catch (err) {}
-    }
-    
-    if (!videoUrl) {
-      throw new Error('No video found in this post');
-    }
-    
-    return {
-      title: title,
-      type: 'video',
-      url: videoUrl,
-      quality: 'HD',
-      thumbnail: thumbnail,
-      shortcode: shortcode,
-      download_url: videoUrl
-    };
-    
-  } catch (error) {
-    throw new Error(`Video download failed: ${error.message}`);
+    throw new Error('Failed to download Instagram video');
   }
 }
 
