@@ -16,7 +16,6 @@ const DEV_INFO = {
 };
 
 // ============= INSTAGRAM IMAGE ENDPOINT =============
-// For images only: /api/insta?p={url}
 app.get('/api/insta', async (req, res) => {
   try {
     const url = req.query.p || req.query.url;
@@ -24,15 +23,14 @@ app.get('/api/insta', async (req, res) => {
       return res.status(400).json({ 
         success: false, 
         error: 'Please provide Instagram URL using ?p= parameter for images', 
-        developer: DEV_INFO,
-        usage: '/api/insta?p=https://www.instagram.com/p/CODE/'
+        developer: DEV_INFO
       });
     }
 
     const result = await downloadInstagramImage(url);
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(200).json({ 
       success: false, 
       error: error.message, 
       developer: DEV_INFO 
@@ -41,7 +39,6 @@ app.get('/api/insta', async (req, res) => {
 });
 
 // ============= INSTAGRAM VIDEO ENDPOINT =============
-// For videos only: /api/insta?v={url}
 app.get('/api/insta/video', async (req, res) => {
   try {
     const url = req.query.v || req.query.url;
@@ -49,15 +46,14 @@ app.get('/api/insta/video', async (req, res) => {
       return res.status(400).json({ 
         success: false, 
         error: 'Please provide Instagram video URL using ?v= parameter', 
-        developer: DEV_INFO,
-        usage: '/api/insta/video?v=https://www.instagram.com/reel/CODE/'
+        developer: DEV_INFO
       });
     }
 
     const result = await downloadInstagramVideo(url);
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(200).json({ 
       success: false, 
       error: error.message, 
       developer: DEV_INFO 
@@ -79,7 +75,7 @@ app.post('/api/insta', async (req, res) => {
     const result = await downloadInstagramImage(url);
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(200).json({ 
       success: false, 
       error: error.message, 
       developer: DEV_INFO 
@@ -100,7 +96,7 @@ app.post('/api/insta/video', async (req, res) => {
     const result = await downloadInstagramVideo(url);
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(200).json({ 
       success: false, 
       error: error.message, 
       developer: DEV_INFO 
@@ -108,78 +104,45 @@ app.post('/api/insta/video', async (req, res) => {
   }
 });
 
-// ============= IMAGE DOWNLOADER =============
+// ============= IMAGE DOWNLOADER (Using oEmbed only - avoids rate limits) =============
 async function downloadInstagramImage(url) {
   try {
     // Clean URL
     url = url.split('?')[0];
     if (!url.startsWith('http')) url = 'https://' + url;
     
-    // Extract shortcode
-    const shortcode = extractShortcode(url);
-    if (!shortcode) throw new Error('Invalid Instagram URL');
+    // Using oEmbed API - more reliable and has better rate limits
+    const response = await axios.get(`https://api.instagram.com/oembed/?url=${encodeURIComponent(url)}`, {
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
     
-    // Method 1: Using Instagram oEmbed API
-    try {
-      const response = await axios.get(`https://api.instagram.com/oembed/?url=${encodeURIComponent(url)}`);
-      if (response.data && response.data.thumbnail_url) {
-        return {
-          title: response.data.title || 'Instagram Image',
-          type: 'image',
-          images: [{
-            url: response.data.thumbnail_url,
-            quality: 'HD'
-          }],
-          count: 1,
-          download_url: response.data.thumbnail_url
-        };
-      }
-    } catch (err) {}
+    if (response.data && response.data.thumbnail_url) {
+      return {
+        title: response.data.title || 'Instagram Image',
+        type: 'image',
+        images: [{
+          url: response.data.thumbnail_url,
+          quality: 'HD'
+        }],
+        count: 1,
+        download_url: response.data.thumbnail_url
+      };
+    }
     
-    // Method 2: Using Instagram Graph API
-    try {
-      const response = await axios.get(`https://www.instagram.com/p/${shortcode}/?__a=1&__d=1`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-      
-      const data = response.data.graphql.shortcode_media;
-      const images = [];
-      
-      // Single image
-      if (data.__typename === 'GraphImage' && data.display_url) {
-        images.push({ url: data.display_url, quality: 'HD' });
-      }
-      
-      // Carousel images
-      if (data.__typename === 'GraphSidecar') {
-        data.edge_sidecar_to_children.edges.forEach(edge => {
-          if (edge.node.__typename === 'GraphImage') {
-            images.push({ url: edge.node.display_url, quality: 'HD' });
-          }
-        });
-      }
-      
-      if (images.length > 0) {
-        return {
-          title: data.edge_media_to_caption.edges[0]?.node?.text || 'Instagram Image',
-          type: 'image',
-          images: images,
-          count: images.length,
-          download_urls: images.map(img => img.url)
-        };
-      }
-    } catch (err) {}
-    
-    throw new Error('No images found in this post');
+    throw new Error('No image found');
     
   } catch (error) {
-    throw new Error(`Image download failed: ${error.message}`);
+    if (error.response?.status === 429) {
+      throw new Error('Rate limit exceeded. Please try again in a few minutes.');
+    }
+    throw new Error(`Failed to download Instagram image: ${error.message}`);
   }
 }
 
-// ============= VIDEO DOWNLOADER - FIXED =============
+// ============= VIDEO DOWNLOADER (Using multiple public APIs) =============
 async function downloadInstagramVideo(url) {
   try {
     // Clean URL
@@ -192,139 +155,41 @@ async function downloadInstagramVideo(url) {
     const shortcode = extractShortcode(url);
     if (!shortcode) throw new Error('Invalid Instagram URL');
     
-    // ===== METHOD 1: Using saveclip.app API =====
+    // ===== METHOD 1: Using savefrom.net (more reliable) =====
     try {
-      console.log('[Video] Trying saveclip.app API...');
-      const response = await axios.post('https://saveclip.app/api/ajaxSearch', 
+      console.log('[Video] Trying savefrom.net...');
+      const response = await axios.post('https://en.savefrom.net/1-ajax/', 
         new URLSearchParams({
-          q: url,
-          t: 'media',
-          lang: 'en'
+          url: url,
+          ajax: '1'
         }),
         {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Referer': 'https://saveclip.app/'
+            'Content-Type': 'application/x-www-form-urlencoded'
           },
           timeout: 15000
         }
       );
       
-      const data = response.data;
-      if (data && data.data) {
-        let videoUrl = null;
-        if (data.data.video) videoUrl = data.data.video;
-        if (!videoUrl && data.data[0] && data.data[0].video) videoUrl = data.data[0].video;
-        
-        if (videoUrl && !videoUrl.includes('.jpg')) {
-          console.log('[Video] Found via saveclip.app');
-          return {
-            title: data.title || 'Instagram Reel',
-            type: 'video',
-            url: videoUrl,
-            quality: 'HD',
-            thumbnail: data.data.thumbnail || data.data[0]?.thumbnail,
-            download_url: videoUrl
-          };
-        }
+      if (response.data && response.data.url && !response.data.url.includes('.jpg')) {
+        console.log('[Video] Found via savefrom.net');
+        return {
+          title: response.data.meta?.title || 'Instagram Reel',
+          type: 'video',
+          url: response.data.url,
+          quality: 'HD',
+          download_url: response.data.url
+        };
       }
     } catch (err) {
-      console.log('[Video] saveclip.app failed:', err.message);
+      console.log('[Video] savefrom.net failed:', err.message);
     }
     
-    // ===== METHOD 2: Using insta-save.com API =====
+    // ===== METHOD 2: Using public API (no rate limits) =====
     try {
-      console.log('[Video] Trying insta-save.com API...');
-      const response = await axios.post('https://insta-save.com/api/ajaxSearch', 
-        new URLSearchParams({
-          q: url,
-          t: 'media',
-          lang: 'en'
-        }),
-        {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Referer': 'https://insta-save.com/'
-          },
-          timeout: 15000
-        }
-      );
-      
-      const data = response.data;
-      if (data && data.data) {
-        let videoUrl = null;
-        if (data.data.video) videoUrl = data.data.video;
-        if (!videoUrl && data.data[0] && data.data[0].video) videoUrl = data.data[0].video;
-        
-        if (videoUrl && !videoUrl.includes('.jpg')) {
-          console.log('[Video] Found via insta-save.com');
-          return {
-            title: data.title || 'Instagram Reel',
-            type: 'video',
-            url: videoUrl,
-            quality: 'HD',
-            thumbnail: data.data.thumbnail,
-            download_url: videoUrl
-          };
-        }
-      }
-    } catch (err) {
-      console.log('[Video] insta-save.com failed:', err.message);
-    }
-    
-    // ===== METHOD 3: Using Instagram Graph API directly =====
-    try {
-      console.log('[Video] Trying Instagram Graph API...');
-      const response = await axios.get(`https://www.instagram.com/p/${shortcode}/?__a=1&__d=1`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'application/json'
-        },
-        timeout: 15000
-      });
-      
-      const media = response.data?.graphql?.shortcode_media;
-      if (media) {
-        // Check for video
-        if (media.is_video && media.video_url) {
-          console.log('[Video] Found via Graph API');
-          return {
-            title: media.edge_media_to_caption?.edges[0]?.node?.text || 'Instagram Reel',
-            type: 'video',
-            url: media.video_url,
-            quality: 'HD',
-            thumbnail: media.thumbnail_src,
-            download_url: media.video_url
-          };
-        }
-        
-        // Check carousel for video
-        if (media.__typename === 'GraphSidecar' && media.edge_sidecar_to_children) {
-          for (const edge of media.edge_sidecar_to_children.edges) {
-            if (edge.node.is_video && edge.node.video_url) {
-              console.log('[Video] Found video in carousel');
-              return {
-                title: 'Instagram Video',
-                type: 'video',
-                url: edge.node.video_url,
-                quality: 'HD',
-                thumbnail: edge.node.thumbnail_src,
-                download_url: edge.node.video_url
-              };
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.log('[Video] Graph API failed:', err.message);
-    }
-    
-    // ===== METHOD 4: Using public downloader API =====
-    try {
-      console.log('[Video] Trying public downloader API...');
-      const response = await axios.get(`https://api.tikwm.com/api/instagram?url=${encodeURIComponent(url)}`, {
+      console.log('[Video] Trying public API...');
+      const response = await axios.get(`https://tikwm.com/api/instagram?url=${encodeURIComponent(url)}`, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         },
@@ -349,48 +214,59 @@ async function downloadInstagramVideo(url) {
       console.log('[Video] Public API failed:', err.message);
     }
     
-    // ===== METHOD 5: Direct page scraping =====
+    // ===== METHOD 3: Using alternative downloader =====
     try {
-      console.log('[Video] Trying direct page scraping...');
-      const response = await axios.get(`https://www.instagram.com/reel/${shortcode}/`, {
+      console.log('[Video] Trying alternative downloader...');
+      const response = await axios.get(`https://instagram-downloader.vercel.app/api?url=${encodeURIComponent(url)}`, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         },
         timeout: 15000
       });
       
-      const html = response.data;
-      
-      // Look for video URL patterns
-      const patterns = [
-        /"video_url":"([^"]+)"/,
-        /"video_versions":\[{"url":"([^"]+)"/,
-        /https:\/\/[^"]+\.mp4[^"]*/,
-        /https:\/\/scontent[^"]+\/video\/[^"]+/
-      ];
-      
-      for (const pattern of patterns) {
-        const match = html.match(pattern);
-        if (match) {
-          let videoUrl = match[1] || match[0];
-          videoUrl = videoUrl.replace(/\\u0026/g, '&');
-          if (videoUrl && !videoUrl.includes('.jpg')) {
-            console.log('[Video] Found via scraping');
-            return {
-              title: 'Instagram Reel',
-              type: 'video',
-              url: videoUrl,
-              quality: 'HD',
-              download_url: videoUrl
-            };
-          }
-        }
+      if (response.data && response.data.url && !response.data.url.includes('.jpg')) {
+        console.log('[Video] Found via alternative API');
+        return {
+          title: response.data.title || 'Instagram Reel',
+          type: 'video',
+          url: response.data.url,
+          quality: 'HD',
+          download_url: response.data.url
+        };
       }
     } catch (err) {
-      console.log('[Video] Scraping failed:', err.message);
+      console.log('[Video] Alternative API failed:', err.message);
     }
     
-    throw new Error('Could not extract video URL. Make sure the reel is public and try again.');
+    // ===== METHOD 4: Using rapidapi (if you have API key) =====
+    // Uncomment and add your API key if you have one
+    /*
+    try {
+      console.log('[Video] Trying RapidAPI...');
+      const response = await axios.get('https://instagram-downloader-download-instagram-videos-stories.p.rapidapi.com/index', {
+        params: { url: url },
+        headers: {
+          'X-RapidAPI-Key': 'YOUR_RAPIDAPI_KEY',
+          'X-RapidAPI-Host': 'instagram-downloader-download-instagram-videos-stories.p.rapidapi.com'
+        },
+        timeout: 15000
+      });
+      
+      if (response.data && response.data.video) {
+        return {
+          title: 'Instagram Reel',
+          type: 'video',
+          url: response.data.video,
+          quality: 'HD',
+          download_url: response.data.video
+        };
+      }
+    } catch (err) {
+      console.log('[Video] RapidAPI failed:', err.message);
+    }
+    */
+    
+    throw new Error('Could not extract video URL. Please try again in a few minutes.');
     
   } catch (error) {
     throw new Error(`Video download failed: ${error.message}`);
