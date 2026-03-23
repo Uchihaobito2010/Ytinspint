@@ -9,21 +9,19 @@
       "maxDuration": 30,
       "memory": 1024
     },
-    "api/insta/video.js": {
-      "maxDuration": 30,
-      "memory": 1024
-    },
     "api/pin.js": {
-      "maxDuration": 30,
-      "memory": 1024
-    },
-    "api/pin/video.js": {
       "maxDuration": 30,
       "memory": 1024
     }
   },
   "rewrites": [
-    { "source": "/api/insta/video", "dest": "/api/insta.js" },
-    { "source": "/api/pin/video", "dest": "/api/pin.js" }
+    {
+      "source": "/api/insta/video",
+      "destination": "/api/insta.js"
+    },
+    {
+      "source": "/api/pin/video",
+      "destination": "/api/pin.js"
+    }
   ]
 }
