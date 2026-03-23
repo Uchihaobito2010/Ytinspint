@@ -1,0 +1,22 @@
+{
+  "name": "social-media-downloader-api",
+  "version": "1.0.0",
+  "description": "API to download videos from YouTube, Instagram, and Pinterest",
+  "main": "api/download.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel deploy"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "node-fetch": "^2.7.0",
+    "puppeteer-core": "^21.0.0",
+    "chrome-aws-lambda": "^10.1.0"
+  },
+  "keywords": ["downloader", "youtube", "instagram", "pinterest", "api"],
+  "author": "Your Name",
+  "license": "MIT"
+}
