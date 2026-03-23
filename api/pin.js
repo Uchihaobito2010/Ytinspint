@@ -1,6 +1,9 @@
 const express = require('express');
 const axios = require('axios');
-const router = express.Router();
+const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 function validatePinUrl(url) {
   if (!url || typeof url !== 'string') return false;
@@ -124,7 +127,7 @@ async function downloadPinterestContent(pinUrl) {
   }
 }
 
-router.get('/pin', async (req, res) => {
+app.get('/api/pin', async (req, res) => {
   try {
     const { p: pinUrl } = req.query;
     
@@ -168,7 +171,7 @@ router.get('/pin', async (req, res) => {
   }
 });
 
-router.post('/pin', async (req, res) => {
+app.post('/api/pin', async (req, res) => {
   try {
     const { url } = req.body;
     
@@ -212,4 +215,4 @@ router.post('/pin', async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = app;
