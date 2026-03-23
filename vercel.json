@@ -1,11 +1,11 @@
 {
   "version": 2,
   "functions": {
-    "api/download.js": {
+    "api/pin.js": {
       "maxDuration": 30,
       "memory": 1024
     },
-    "api/pin.js": {
+    "api/download.js": {
       "maxDuration": 30,
       "memory": 1024
     }
