@@ -2,8 +2,15 @@
   "version": 2,
   "functions": {
     "api/pin.js": {
-      "maxDuration": 30,
+      "maxDuration": 10,
       "memory": 1024
     }
-  }
+  },
+  "routes": [
+    {
+      "src": "/api/pin",
+      "dest": "/api/pin.js",
+      "methods": ["GET", "POST"]
+    }
+  ]
 }
