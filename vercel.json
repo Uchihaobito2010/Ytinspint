@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/download",
+      "methods": ["GET", "POST"],
+      "dest": "/api/download.js"
+    },
+    {
+      "src": "/api/youtube",
+      "methods": ["GET", "POST"],
+      "dest": "/api/youtube.js"
+    },
+    {
+      "src": "/api/instagram",
+      "methods": ["GET", "POST"],
+      "dest": "/api/instagram.js"
+    },
+    {
+      "src": "/api/pinterest",
+      "methods": ["GET", "POST"],
+      "dest": "/api/pinterest.js"
+    }
+  ]
+}
