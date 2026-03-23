@@ -4,10 +4,6 @@
     "api/pin.js": {
       "maxDuration": 30,
       "memory": 1024
-    },
-    "api/download.js": {
-      "maxDuration": 30,
-      "memory": 1024
     }
   },
   "rewrites": [
