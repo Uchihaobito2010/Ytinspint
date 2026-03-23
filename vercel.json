@@ -12,10 +12,6 @@
   },
   "rewrites": [
     {
-      "source": "/api/pin",
-      "destination": "/api/pin.js"
-    },
-    {
       "source": "/api/pin/video",
       "destination": "/api/pin.js"
     }
