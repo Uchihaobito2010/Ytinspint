@@ -1,165 +1,215 @@
 const express = require('express');
 const axios = require('axios');
-const cheerio = require('cheerio');
+const router = express.Router();
 
-const app = express();
-app.use(require('cors')());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+function validatePinUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  
+  const patterns = [
+    /^https?:\/\/(www\.)?pinterest\.com\/pin\/\d+/i,
+    /^https?:\/\/(www\.)?pinterest\.com\/pin\/[^\/]+\/\d+/i,
+    /^https?:\/\/(www\.)?pin\.it\/[a-zA-Z0-9]+/i,
+    /^https?:\/\/(www\.)?pinterest\.com\/[^\/]+\/[^\/]+\/\d+/i
+  ];
+  
+  return patterns.some(pattern => pattern.test(url));
+}
 
-const DEV_INFO = {
-  developer: "Aotpy",
-  telegram: "https://t.me/Aotpy",
-  channel: "https://t.me/obitostuffs",
-  portfolio: "https://Aotpy.vercel.app",
-  github: "Uchihaobito2010"
-};
-
-app.get('/api/pin', async (req, res) => {
+async function downloadPinterestContent(pinUrl) {
   try {
-    const url = req.query.p || req.query.url;
-    if (!url) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please provide Pinterest URL with ?p= for images',
-        developer: DEV_INFO
-      });
-    }
-
-    const result = await getPinterestMedia(url);
+    const cleanUrl = pinUrl.split('?')[0];
     
-    if (result.type === 'video') {
-      return res.status(400).json({
-        success: false,
-        error: 'This is a video. Use ?v= parameter instead',
-        developer: DEV_INFO
-      });
-    }
-    
-    res.json({ success: true, data: result, developer: DEV_INFO });
-  } catch (error) {
-    res.status(200).json({ success: false, error: error.message, developer: DEV_INFO });
-  }
-});
-
-app.get('/api/pin/video', async (req, res) => {
-  try {
-    const url = req.query.v || req.query.url;
-    if (!url) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please provide Pinterest URL with ?v= for videos',
-        developer: DEV_INFO
-      });
-    }
-
-    const result = await getPinterestMedia(url);
-    
-    if (result.type === 'image') {
-      return res.status(400).json({
-        success: false,
-        error: 'This is an image. Use ?p= parameter instead',
-        developer: DEV_INFO
-      });
-    }
-    
-    res.json({ success: true, data: result, developer: DEV_INFO });
-  } catch (error) {
-    res.status(200).json({ success: false, error: error.message, developer: DEV_INFO });
-  }
-});
-
-app.post('/api/pin', async (req, res) => {
-  try {
-    const url = req.body.p || req.body.url;
-    if (!url) {
-      return res.status(400).json({ success: false, error: 'Please provide Pinterest URL', developer: DEV_INFO });
-    }
-    const result = await getPinterestMedia(url);
-    res.json({ success: true, data: result, developer: DEV_INFO });
-  } catch (error) {
-    res.status(200).json({ success: false, error: error.message, developer: DEV_INFO });
-  }
-});
-
-app.post('/api/pin/video', async (req, res) => {
-  try {
-    const url = req.body.v || req.body.url;
-    if (!url) {
-      return res.status(400).json({ success: false, error: 'Please provide Pinterest URL', developer: DEV_INFO });
-    }
-    const result = await getPinterestMedia(url);
-    res.json({ success: true, data: result, developer: DEV_INFO });
-  } catch (error) {
-    res.status(200).json({ success: false, error: error.message, developer: DEV_INFO });
-  }
-});
-
-async function getPinterestMedia(url) {
-  try {
-    url = url.split('?')[0];
-    if (!url.startsWith('http')) url = 'https://' + url;
-    
-    const response = await axios.get(url, {
+    const response = await axios.get(cleanUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
       },
-      timeout: 15000
+      timeout: 10000
     });
     
     const html = response.data;
-    const $ = cheerio.load(html);
     
-    let videoUrl = null;
-    let imageUrl = null;
-    let title = $('title').text().replace(' - Pinterest', '').trim() || 'Pinterest Media';
+    const videoMatch = html.match(/video[^>]*src="([^"]+\.(mp4|mov|webm)[^"]*)"/i) ||
+                      html.match(/contentUrl["\s:]+["']([^"']+\.(mp4|mov|webm)[^"']*)["']/i) ||
+                      html.match(/"video_list":\s*{[^}]*"video_url":\s*"([^"]+)"/i);
     
-    const scripts = $('script').get();
-    for (const script of scripts) {
-      const content = $(script).html();
-      if (content) {
-        if (!videoUrl) {
-          const mp4Match = content.match(/https:\/\/[^"']+\.mp4[^"']*/);
-          if (mp4Match) videoUrl = mp4Match[0];
+    if (videoMatch && videoMatch[1]) {
+      let videoUrl = videoMatch[1].replace(/\\/g, '');
+      const titleMatch = html.match(/<title>([^<]*)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].replace(' - Pinterest', '') : 'Pinterest Video';
+      const thumbnailMatch = html.match(/property="og:image"\s+content="([^"]+)"/i);
+      const thumbnail = thumbnailMatch ? thumbnailMatch[1] : null;
+      
+      return {
+        success: true,
+        type: 'video',
+        url: videoUrl,
+        title: title.trim(),
+        thumbnail: thumbnail
+      };
+    }
+    
+    const imageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i) ||
+                      html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i) ||
+                      html.match(/"image":\s*"([^"]+)"/i) ||
+                      html.match(/<img[^>]*src="([^"]*original[^"]*\.(jpg|jpeg|png|webp)[^"]*)"/i);
+    
+    if (imageMatch && imageMatch[1]) {
+      let imageUrl = imageMatch[1].replace(/\\/g, '');
+      const titleMatch = html.match(/<title>([^<]*)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].replace(' - Pinterest', '') : 'Pinterest Image';
+      
+      return {
+        success: true,
+        type: 'image',
+        url: imageUrl,
+        title: title.trim(),
+        thumbnail: imageUrl
+      };
+    }
+    
+    const jsonMatch = html.match(/<script[^>]*id="__PWS_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+    if (jsonMatch && jsonMatch[1]) {
+      try {
+        const data = JSON.parse(jsonMatch[1]);
+        const pinData = data.props?.initialReduxState?.pins || data.props?.pageProps?.initialReduxState?.pins;
+        
+        if (pinData) {
+          const pinId = Object.keys(pinData)[0];
+          const pin = pinData[pinId];
+          
+          if (pin?.videos?.video_list?.V_720P?.url) {
+            return {
+              success: true,
+              type: 'video',
+              url: pin.videos.video_list.V_720P.url,
+              title: pin.title || 'Pinterest Video',
+              thumbnail: pin.images?.orig?.url || null
+            };
+          } else if (pin?.images?.orig?.url) {
+            return {
+              success: true,
+              type: 'image',
+              url: pin.images.orig.url,
+              title: pin.title || 'Pinterest Image',
+              thumbnail: pin.images.orig.url
+            };
+          }
         }
-        if (!imageUrl) {
-          const imgMatch = content.match(/https:\/\/[^"']+\.jpg[^"']*/);
-          if (imgMatch && !imgMatch[0].includes('logo')) imageUrl = imgMatch[0];
-        }
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError);
       }
     }
     
-    if (!videoUrl) {
-      videoUrl = $('meta[property="og:video"]').attr('content');
-    }
-    
-    if (!imageUrl) {
-      imageUrl = $('meta[property="og:image"]').attr('content');
-    }
-    
-    if (videoUrl) {
-      return {
-        title: title,
-        type: 'video',
-        url: videoUrl,
-        download_url: videoUrl
-      };
-    }
-    
-    if (imageUrl) {
-      return {
-        title: title,
-        type: 'image',
-        url: imageUrl,
-        download_url: imageUrl
-      };
-    }
-    
-    throw new Error('No media found');
+    return {
+      success: false,
+      message: 'No downloadable content found'
+    };
     
   } catch (error) {
-    throw new Error(`Failed: ${error.message}`);
+    console.error('Error:', error.message);
+    
+    if (error.response?.status === 404) {
+      return {
+        success: false,
+        message: 'Pin not found'
+      };
+    }
+    
+    return {
+      success: false,
+      message: `Failed: ${error.message}`
+    };
   }
 }
 
-module.exports = app;
+router.get('/pin', async (req, res) => {
+  try {
+    const { p: pinUrl } = req.query;
+    
+    if (!pinUrl) {
+      return res.status(400).json({ 
+        error: 'Missing URL',
+        message: 'Please provide ?p=PINTEREST_URL' 
+      });
+    }
+    
+    if (!validatePinUrl(pinUrl)) {
+      return res.status(400).json({ 
+        error: 'Invalid URL',
+        message: 'Please provide a valid Pinterest URL' 
+      });
+    }
+    
+    const result = await downloadPinterestContent(pinUrl);
+    
+    if (!result.success) {
+      return res.status(404).json({ 
+        error: 'Not found',
+        message: result.message 
+      });
+    }
+    
+    res.json({
+      success: true,
+      type: result.type,
+      url: result.url,
+      title: result.title,
+      thumbnail: result.thumbnail
+    });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ 
+      error: 'Download failed',
+      message: error.message 
+    });
+  }
+});
+
+router.post('/pin', async (req, res) => {
+  try {
+    const { url } = req.body;
+    
+    if (!url) {
+      return res.status(400).json({ 
+        error: 'Missing URL',
+        message: 'Please provide URL in request body' 
+      });
+    }
+    
+    if (!validatePinUrl(url)) {
+      return res.status(400).json({ 
+        error: 'Invalid URL',
+        message: 'Please provide a valid Pinterest URL' 
+      });
+    }
+    
+    const result = await downloadPinterestContent(url);
+    
+    if (!result.success) {
+      return res.status(404).json({ 
+        error: 'Not found',
+        message: result.message 
+      });
+    }
+    
+    res.json({
+      success: true,
+      type: result.type,
+      url: result.url,
+      title: result.title,
+      thumbnail: result.thumbnail
+    });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ 
+      error: 'Download failed',
+      message: error.message 
+    });
+  }
+});
+
+module.exports = router;
