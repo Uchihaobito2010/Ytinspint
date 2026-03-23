@@ -1,8 +1,8 @@
 {
-  "name": "social-media-downloader-api",
-  "version": "1.0.0",
-  "description": "API to download videos from YouTube, Instagram, and Pinterest",
-  "main": "api/yt.js",
+  "name": "pinterest-downloader-api",
+  "version": "2.0.0",
+  "description": "Pinterest Image & Video Downloader API",
+  "main": "api/download.js",
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel deploy"
@@ -11,10 +11,10 @@
     "axios": "^1.6.0",
     "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "node-fetch": "^2.7.0"
+    "express": "^4.18.2"
   },
-  "keywords": ["downloader", "youtube", "instagram", "pinterest", "api"],
-  "author": "Your Name",
+  "keywords": ["pinterest", "downloader", "api", "image", "video"],
+  "author": "t.me/Aotpy",
+  "portfolio": "https://Aotpy.vercel.app",
   "license": "MIT"
 }
