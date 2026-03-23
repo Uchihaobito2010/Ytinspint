@@ -15,20 +15,33 @@ const DEV_INFO = {
   github: "Uchihaobito2010"
 };
 
-// ============= INSTAGRAM IMAGE ENDPOINT =============
+// ============= MAIN ENDPOINT - Auto Detect =============
 app.get('/api/insta', async (req, res) => {
   try {
-    const url = req.query.p || req.query.url;
+    let url = req.query.p || req.query.v || req.query.url;
+    
     if (!url) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Please provide Instagram URL using ?p= parameter for images', 
-        developer: DEV_INFO
+        error: 'Please provide Instagram URL using ?p= (image) or ?v= (video) parameter',
+        developer: DEV_INFO,
+        usage: {
+          image: '/api/insta?p=https://www.instagram.com/p/CODE/',
+          video: '/api/insta?v=https://www.instagram.com/reel/CODE/'
+        }
       });
     }
 
-    const result = await downloadInstagramImage(url);
-    res.json({ success: true, data: result, developer: DEV_INFO });
+    // Auto-detect if it's a video or image
+    if (url.includes('/reel/') || url.includes('/tv/')) {
+      // It's a video/reel
+      const result = await downloadInstagramVideo(url);
+      res.json({ success: true, data: result, developer: DEV_INFO });
+    } else {
+      // It's an image post
+      const result = await downloadInstagramImage(url);
+      res.json({ success: true, data: result, developer: DEV_INFO });
+    }
   } catch (error) {
     res.status(200).json({ 
       success: false, 
@@ -38,7 +51,7 @@ app.get('/api/insta', async (req, res) => {
   }
 });
 
-// ============= INSTAGRAM VIDEO ENDPOINT =============
+// ============= VIDEO ENDPOINT (for backward compatibility) =============
 app.get('/api/insta/video', async (req, res) => {
   try {
     const url = req.query.v || req.query.url;
@@ -46,7 +59,8 @@ app.get('/api/insta/video', async (req, res) => {
       return res.status(400).json({ 
         success: false, 
         error: 'Please provide Instagram video URL using ?v= parameter', 
-        developer: DEV_INFO
+        developer: DEV_INFO,
+        usage: '/api/insta/video?v=https://www.instagram.com/reel/CODE/'
       });
     }
 
@@ -64,16 +78,23 @@ app.get('/api/insta/video', async (req, res) => {
 // ============= POST ENDPOINTS =============
 app.post('/api/insta', async (req, res) => {
   try {
-    const url = req.body.p || req.body.url;
+    const url = req.body.p || req.body.v || req.body.url;
     if (!url) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Please provide Instagram URL for images', 
+        error: 'Please provide Instagram URL', 
         developer: DEV_INFO 
       });
     }
-    const result = await downloadInstagramImage(url);
-    res.json({ success: true, data: result, developer: DEV_INFO });
+    
+    // Auto-detect
+    if (url.includes('/reel/') || url.includes('/tv/')) {
+      const result = await downloadInstagramVideo(url);
+      res.json({ success: true, data: result, developer: DEV_INFO });
+    } else {
+      const result = await downloadInstagramImage(url);
+      res.json({ success: true, data: result, developer: DEV_INFO });
+    }
   } catch (error) {
     res.status(200).json({ 
       success: false, 
@@ -104,16 +125,18 @@ app.post('/api/insta/video', async (req, res) => {
   }
 });
 
-// ============= IMAGE DOWNLOADER (Using oEmbed only - avoids rate limits) =============
+// ============= IMAGE DOWNLOADER =============
 async function downloadInstagramImage(url) {
   try {
     // Clean URL
     url = url.split('?')[0];
     if (!url.startsWith('http')) url = 'https://' + url;
     
-    // Using oEmbed API - more reliable and has better rate limits
+    console.log(`[Instagram Image] Processing: ${url}`);
+    
+    // Using oEmbed API
     const response = await axios.get(`https://api.instagram.com/oembed/?url=${encodeURIComponent(url)}`, {
-      timeout: 10000,
+      timeout: 15000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
@@ -138,11 +161,11 @@ async function downloadInstagramImage(url) {
     if (error.response?.status === 429) {
       throw new Error('Rate limit exceeded. Please try again in a few minutes.');
     }
-    throw new Error(`Failed to download Instagram image: ${error.message}`);
+    throw new Error(`Failed: ${error.message}`);
   }
 }
 
-// ============= VIDEO DOWNLOADER (Using multiple public APIs) =============
+// ============= VIDEO DOWNLOADER =============
 async function downloadInstagramVideo(url) {
   try {
     // Clean URL
@@ -151,11 +174,7 @@ async function downloadInstagramVideo(url) {
     
     console.log(`[Instagram Video] Processing: ${url}`);
     
-    // Extract shortcode
-    const shortcode = extractShortcode(url);
-    if (!shortcode) throw new Error('Invalid Instagram URL');
-    
-    // ===== METHOD 1: Using savefrom.net (more reliable) =====
+    // ===== METHOD 1: Using savefrom.net =====
     try {
       console.log('[Video] Trying savefrom.net...');
       const response = await axios.post('https://en.savefrom.net/1-ajax/', 
@@ -168,7 +187,7 @@ async function downloadInstagramVideo(url) {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Content-Type': 'application/x-www-form-urlencoded'
           },
-          timeout: 15000
+          timeout: 20000
         }
       );
       
@@ -186,14 +205,14 @@ async function downloadInstagramVideo(url) {
       console.log('[Video] savefrom.net failed:', err.message);
     }
     
-    // ===== METHOD 2: Using public API (no rate limits) =====
+    // ===== METHOD 2: Using tikwm API =====
     try {
-      console.log('[Video] Trying public API...');
+      console.log('[Video] Trying tikwm API...');
       const response = await axios.get(`https://tikwm.com/api/instagram?url=${encodeURIComponent(url)}`, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         },
-        timeout: 15000
+        timeout: 20000
       });
       
       if (response.data && response.data.data && response.data.data.play) {
@@ -211,7 +230,7 @@ async function downloadInstagramVideo(url) {
         }
       }
     } catch (err) {
-      console.log('[Video] Public API failed:', err.message);
+      console.log('[Video] tikwm API failed:', err.message);
     }
     
     // ===== METHOD 3: Using alternative downloader =====
@@ -221,7 +240,7 @@ async function downloadInstagramVideo(url) {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         },
-        timeout: 15000
+        timeout: 20000
       });
       
       if (response.data && response.data.url && !response.data.url.includes('.jpg')) {
@@ -238,54 +257,11 @@ async function downloadInstagramVideo(url) {
       console.log('[Video] Alternative API failed:', err.message);
     }
     
-    // ===== METHOD 4: Using rapidapi (if you have API key) =====
-    // Uncomment and add your API key if you have one
-    /*
-    try {
-      console.log('[Video] Trying RapidAPI...');
-      const response = await axios.get('https://instagram-downloader-download-instagram-videos-stories.p.rapidapi.com/index', {
-        params: { url: url },
-        headers: {
-          'X-RapidAPI-Key': 'YOUR_RAPIDAPI_KEY',
-          'X-RapidAPI-Host': 'instagram-downloader-download-instagram-videos-stories.p.rapidapi.com'
-        },
-        timeout: 15000
-      });
-      
-      if (response.data && response.data.video) {
-        return {
-          title: 'Instagram Reel',
-          type: 'video',
-          url: response.data.video,
-          quality: 'HD',
-          download_url: response.data.video
-        };
-      }
-    } catch (err) {
-      console.log('[Video] RapidAPI failed:', err.message);
-    }
-    */
-    
-    throw new Error('Could not extract video URL. Please try again in a few minutes.');
+    throw new Error('Could not extract video URL. Please try again.');
     
   } catch (error) {
     throw new Error(`Video download failed: ${error.message}`);
   }
-}
-
-// ============= HELPER FUNCTION =============
-function extractShortcode(url) {
-  const patterns = [
-    /instagram\.com\/p\/([^\/?#]+)/,
-    /instagram\.com\/reel\/([^\/?#]+)/,
-    /instagram\.com\/tv\/([^\/?#]+)/
-  ];
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
-  }
-  return null;
 }
 
 module.exports = app;
