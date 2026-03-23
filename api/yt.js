@@ -7,6 +7,15 @@ app.use(require('cors')());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Developer Info
+const DEV_INFO = {
+  developer: "Aotpy",
+  telegram: "https://t.me/Aotpy",
+  channel: "https://t.me/obitostuffs",
+  portfolio: "https://Aotpy.vercel.app",
+  github: "Uchihaobito2010"
+};
+
 // YouTube Downloader
 app.get('/api/yt', async (req, res) => {
   try {
@@ -15,7 +24,8 @@ app.get('/api/yt', async (req, res) => {
     if (!url) {
       return res.status(400).json({
         success: false,
-        error: 'Please provide video URL using ?p= parameter'
+        error: 'Please provide video URL using ?p= parameter',
+        developer: DEV_INFO
       });
     }
 
@@ -23,7 +33,8 @@ app.get('/api/yt', async (req, res) => {
     if (!videoId) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid YouTube URL'
+        error: 'Invalid YouTube URL',
+        developer: DEV_INFO
       });
     }
 
@@ -31,13 +42,16 @@ app.get('/api/yt', async (req, res) => {
     
     res.json({
       success: true,
-      data: result
+      data: result,
+      developer: DEV_INFO
     });
 
   } catch (error) {
+    console.error('Error:', error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      developer: DEV_INFO
     });
   }
 });
@@ -49,7 +63,8 @@ app.post('/api/yt', async (req, res) => {
     if (!url) {
       return res.status(400).json({
         success: false,
-        error: 'Please provide video URL'
+        error: 'Please provide video URL',
+        developer: DEV_INFO
       });
     }
 
@@ -57,7 +72,8 @@ app.post('/api/yt', async (req, res) => {
     if (!videoId) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid YouTube URL'
+        error: 'Invalid YouTube URL',
+        developer: DEV_INFO
       });
     }
 
@@ -65,13 +81,16 @@ app.post('/api/yt', async (req, res) => {
     
     res.json({
       success: true,
-      data: result
+      data: result,
+      developer: DEV_INFO
     });
 
   } catch (error) {
+    console.error('Error:', error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      developer: DEV_INFO
     });
   }
 });
@@ -90,50 +109,120 @@ function extractVideoId(url) {
 
 async function downloadYouTube(videoId) {
   try {
-    // Try multiple invidious instances
-    const invidiousUrls = [
-      'https://invidious.snopyta.org',
-      'https://yewtu.be',
-      'https://inv.riverside.rocks'
-    ];
+    // Method 1: Using y2mate
+    const downloadUrl = await getY2mateDownload(videoId);
     
-    for (const baseUrl of invidiousUrls) {
-      try {
-        const response = await axios.get(`${baseUrl}/api/v1/videos/${videoId}`, {
-          timeout: 10000
-        });
-        const data = response.data;
-        
-        const formats = [];
-        if (data.formatStreams) {
-          data.formatStreams.forEach(stream => {
-            if (stream.type === 'video/mp4' || stream.type === 'video/webm') {
-              formats.push({
-                quality: stream.qualityLabel || stream.quality,
-                type: 'video',
-                url: stream.url,
-                size: stream.size || 'Unknown'
-              });
-            }
-          });
+    // Method 2: Using savefrom.net
+    let savefromUrl = null;
+    if (!downloadUrl) {
+      savefromUrl = await getSaveFromDownload(videoId);
+    }
+    
+    const videos = [];
+    
+    if (downloadUrl) {
+      videos.push({
+        quality: 'HD (720p/1080p)',
+        type: 'video',
+        url: downloadUrl,
+        source: 'y2mate'
+      });
+    }
+    
+    if (savefromUrl) {
+      videos.push({
+        quality: 'HD',
+        type: 'video',
+        url: savefromUrl,
+        source: 'savefrom'
+      });
+    }
+    
+    if (videos.length === 0) {
+      throw new Error('No video URLs found. The video might be private or age-restricted.');
+    }
+    
+    return {
+      title: 'YouTube Video',
+      thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      videoId: videoId,
+      videos: videos
+    };
+    
+  } catch (error) {
+    console.error('Download error:', error.message);
+    throw new Error(`Failed to download: ${error.message}`);
+  }
+}
+
+async function getY2mateDownload(videoId) {
+  try {
+    const response = await axios.get(`https://www.y2mate.com/mates/en${videoId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 15000
+    });
+    
+    const html = response.data;
+    const k_match = html.match(/var k__id = "([^"]+)"/);
+    const k_id = k_match ? k_match[1] : null;
+    
+    if (k_id) {
+      const convertResponse = await axios.post('https://www.y2mate.com/mates/convert', 
+        new URLSearchParams({
+          type: 'youtube',
+          _id: k_id,
+          v_id: videoId,
+          ajax: '1',
+          token: '',
+          ftype: 'mp4',
+          fquality: '360'
+        }),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
         }
-        
-        return {
-          title: data.title,
-          duration: data.lengthSeconds,
-          views: data.viewCount,
-          thumbnail: data.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-          videos: formats,
-          audio: data.adaptiveFormats?.find(f => f.type?.includes('audio'))?.url || null
-        };
-      } catch (err) {
-        continue;
+      );
+      
+      if (convertResponse.data && convertResponse.data.dlink) {
+        return convertResponse.data.dlink;
       }
     }
     
-    throw new Error('Failed to fetch video data');
+    return null;
   } catch (error) {
-    throw new Error(`YouTube download failed: ${error.message}`);
+    console.log('Y2mate failed:', error.message);
+    return null;
+  }
+}
+
+async function getSaveFromDownload(videoId) {
+  try {
+    const response = await axios.post('https://en.savefrom.net/1-ajax/', 
+      new URLSearchParams({
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        ajax: '1'
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        timeout: 15000
+      }
+    );
+    
+    if (response.data && response.data.url) {
+      return response.data.url;
+    }
+    
+    return null;
+  } catch (error) {
+    console.log('SaveFrom failed:', error.message);
+    return null;
   }
 }
 
