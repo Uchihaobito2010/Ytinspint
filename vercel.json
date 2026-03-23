@@ -8,24 +8,19 @@
   },
   "routes": [
     {
-      "src": "/api/download",
+      "src": "/api/yt",
       "methods": ["GET", "POST"],
-      "dest": "/api/download.js"
+      "dest": "/api/yt.js"
     },
     {
-      "src": "/api/youtube",
+      "src": "/api/insta",
       "methods": ["GET", "POST"],
-      "dest": "/api/youtube.js"
+      "dest": "/api/insta.js"
     },
     {
-      "src": "/api/instagram",
+      "src": "/api/pin",
       "methods": ["GET", "POST"],
-      "dest": "/api/instagram.js"
-    },
-    {
-      "src": "/api/pinterest",
-      "methods": ["GET", "POST"],
-      "dest": "/api/pinterest.js"
+      "dest": "/api/pin.js"
     }
   ]
 }
