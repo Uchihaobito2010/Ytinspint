@@ -19,22 +19,26 @@ app.get('/api/pin', async (req, res) => {
   try {
     const url = req.query.p || req.query.url;
     if (!url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Please provide Pinterest URL using ?p= parameter for images', 
-        developer: DEV_INFO,
-        usage: '/api/pin?p=https://pin.it/abc123'
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide Pinterest URL with ?p= for images',
+        developer: DEV_INFO
       });
     }
 
-    const result = await downloadPinterestImage(url);
+    const result = await getPinterestMedia(url);
+    
+    if (result.type === 'video') {
+      return res.status(400).json({
+        success: false,
+        error: 'This is a video. Use ?v= parameter instead',
+        developer: DEV_INFO
+      });
+    }
+    
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message, 
-      developer: DEV_INFO 
-    });
+    res.status(200).json({ success: false, error: error.message, developer: DEV_INFO });
   }
 });
 
@@ -42,22 +46,26 @@ app.get('/api/pin/video', async (req, res) => {
   try {
     const url = req.query.v || req.query.url;
     if (!url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Please provide Pinterest URL using ?v= parameter for videos', 
-        developer: DEV_INFO,
-        usage: '/api/pin/video?v=https://pin.it/abc123'
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide Pinterest URL with ?v= for videos',
+        developer: DEV_INFO
       });
     }
 
-    const result = await downloadPinterestVideo(url);
+    const result = await getPinterestMedia(url);
+    
+    if (result.type === 'image') {
+      return res.status(400).json({
+        success: false,
+        error: 'This is an image. Use ?p= parameter instead',
+        developer: DEV_INFO
+      });
+    }
+    
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message, 
-      developer: DEV_INFO 
-    });
+    res.status(200).json({ success: false, error: error.message, developer: DEV_INFO });
   }
 });
 
@@ -65,20 +73,12 @@ app.post('/api/pin', async (req, res) => {
   try {
     const url = req.body.p || req.body.url;
     if (!url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Please provide Pinterest URL for images', 
-        developer: DEV_INFO 
-      });
+      return res.status(400).json({ success: false, error: 'Please provide Pinterest URL', developer: DEV_INFO });
     }
-    const result = await downloadPinterestImage(url);
+    const result = await getPinterestMedia(url);
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message, 
-      developer: DEV_INFO 
-    });
+    res.status(200).json({ success: false, error: error.message, developer: DEV_INFO });
   }
 });
 
@@ -86,200 +86,80 @@ app.post('/api/pin/video', async (req, res) => {
   try {
     const url = req.body.v || req.body.url;
     if (!url) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Please provide Pinterest URL for videos', 
-        developer: DEV_INFO 
-      });
+      return res.status(400).json({ success: false, error: 'Please provide Pinterest URL', developer: DEV_INFO });
     }
-    const result = await downloadPinterestVideo(url);
+    const result = await getPinterestMedia(url);
     res.json({ success: true, data: result, developer: DEV_INFO });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message, 
-      developer: DEV_INFO 
-    });
+    res.status(200).json({ success: false, error: error.message, developer: DEV_INFO });
   }
 });
 
-async function downloadPinterestImage(url) {
+async function getPinterestMedia(url) {
   try {
     url = url.split('?')[0];
     if (!url.startsWith('http')) url = 'https://' + url;
     
-    const pinId = extractPinId(url);
-    let imageUrl = null;
-    let title = 'Pinterest Image';
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 15000
+    });
     
-    if (pinId) {
-      try {
-        const response = await axios.get(`https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids=${pinId}`, {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          timeout: 10000
-        });
-        
-        if (response.data?.data?.[0]) {
-          const pin = response.data.data[0];
-          title = pin.title || pin.description || 'Pinterest Image';
-          
-          if (pin.images?.orig?.url) {
-            imageUrl = pin.images.orig.url;
-          } else if (pin.images?.564x?.url) {
-            imageUrl = pin.images['564x'].url;
-          } else if (pin.image_url) {
-            imageUrl = pin.image_url;
-          }
-        }
-      } catch (err) {}
-    }
+    const html = response.data;
+    const $ = cheerio.load(html);
     
-    if (!imageUrl) {
-      const response = await axios.get(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-      });
-      
-      const $ = cheerio.load(response.data);
-      title = $('title').text().replace(' - Pinterest', '') || 'Pinterest Image';
-      
-      imageUrl = $('meta[property="og:image"]').attr('content') ||
-                 $('img[src*="originals"]').first().attr('src') ||
-                 $('img[src*="736x"]').first().attr('src');
-    }
-    
-    if (!imageUrl) {
-      throw new Error('No image found in this pin');
-    }
-    
-    return {
-      title: title,
-      type: 'image',
-      url: imageUrl,
-      quality: 'HD',
-      pin_id: pinId,
-      download_url: imageUrl
-    };
-    
-  } catch (error) {
-    throw new Error(`Image download failed: ${error.message}`);
-  }
-}
-
-async function downloadPinterestVideo(url) {
-  try {
-    url = url.split('?')[0];
-    if (!url.startsWith('http')) url = 'https://' + url;
-    
-    const pinId = extractPinId(url);
     let videoUrl = null;
-    let title = 'Pinterest Video';
-    let thumbnail = null;
+    let imageUrl = null;
+    let title = $('title').text().replace(' - Pinterest', '').trim() || 'Pinterest Media';
     
-    if (pinId) {
-      try {
-        const response = await axios.get(`https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids=${pinId}`, {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          timeout: 10000
-        });
-        
-        if (response.data?.data?.[0]) {
-          const pin = response.data.data[0];
-          title = pin.title || pin.description || 'Pinterest Video';
-          thumbnail = pin.images?.orig?.url;
-          
-          if (pin.video_url) {
-            videoUrl = pin.video_url;
-            if (videoUrl.includes('.m3u8')) {
-              videoUrl = await convertM3U8ToMP4(videoUrl);
-            }
-          }
+    const scripts = $('script').get();
+    for (const script of scripts) {
+      const content = $(script).html();
+      if (content) {
+        if (!videoUrl) {
+          const mp4Match = content.match(/https:\/\/[^"']+\.mp4[^"']*/);
+          if (mp4Match) videoUrl = mp4Match[0];
         }
-      } catch (err) {}
-    }
-    
-    if (!videoUrl) {
-      const response = await axios.get(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-      });
-      
-      const $ = cheerio.load(response.data);
-      title = $('title').text().replace(' - Pinterest', '') || 'Pinterest Video';
-      thumbnail = $('meta[property="og:image"]').attr('content');
-      
-      $('video source').each((i, el) => {
-        const src = $(el).attr('src');
-        if (src && src.includes('.mp4')) videoUrl = src;
-      });
-      
-      if (!videoUrl) {
-        $('video').each((i, el) => {
-          const src = $(el).attr('src');
-          if (src && src.includes('.mp4')) videoUrl = src;
-        });
-      }
-      
-      if (!videoUrl) {
-        videoUrl = $('meta[property="og:video"]').attr('content') ||
-                   $('meta[property="og:video:secure_url"]').attr('content');
-      }
-      
-      if (!videoUrl) {
-        const scripts = $('script').get();
-        for (const script of scripts) {
-          const content = $(script).html();
-          if (content) {
-            const mp4Match = content.match(/https?:\/\/[^"']+\.mp4[^"']*/);
-            if (mp4Match) {
-              videoUrl = mp4Match[0];
-              break;
-            }
-          }
+        if (!imageUrl) {
+          const imgMatch = content.match(/https:\/\/[^"']+\.jpg[^"']*/);
+          if (imgMatch && !imgMatch[0].includes('logo')) imageUrl = imgMatch[0];
         }
-      }
-      
-      if (videoUrl && videoUrl.includes('.m3u8')) {
-        videoUrl = await convertM3U8ToMP4(videoUrl);
       }
     }
     
     if (!videoUrl) {
-      throw new Error('No video found in this pin');
+      videoUrl = $('meta[property="og:video"]').attr('content');
     }
     
-    return {
-      title: title,
-      type: 'video',
-      url: videoUrl,
-      quality: 'HD',
-      thumbnail: thumbnail,
-      pin_id: pinId,
-      download_url: videoUrl
-    };
+    if (!imageUrl) {
+      imageUrl = $('meta[property="og:image"]').attr('content');
+    }
+    
+    if (videoUrl) {
+      return {
+        title: title,
+        type: 'video',
+        url: videoUrl,
+        download_url: videoUrl
+      };
+    }
+    
+    if (imageUrl) {
+      return {
+        title: title,
+        type: 'image',
+        url: imageUrl,
+        download_url: imageUrl
+      };
+    }
+    
+    throw new Error('No media found');
     
   } catch (error) {
-    throw new Error(`Video download failed: ${error.message}`);
+    throw new Error(`Failed: ${error.message}`);
   }
-}
-
-async function convertM3U8ToMP4(m3u8Url) {
-  try {
-    const mp4Url = m3u8Url.replace('.m3u8', '.mp4');
-    const response = await axios.head(mp4Url, { timeout: 5000 });
-    if (response.status === 200) return mp4Url;
-  } catch (err) {}
-  return m3u8Url;
-}
-
-function extractPinId(url) {
-  const patterns = [
-    /pinterest\.com\/pin\/(\d+)/,
-    /pin\.it\/([^\/]+)/
-  ];
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
-  }
-  return null;
 }
 
 module.exports = app;
