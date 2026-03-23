@@ -1,11 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "api/yt.js": {
-      "maxDuration": 30,
-      "memory": 1024
-    },
-    "api/insta.js": {
+    "api/download.js": {
       "maxDuration": 30,
       "memory": 1024
     },
@@ -16,8 +12,8 @@
   },
   "rewrites": [
     {
-      "source": "/api/insta/video",
-      "destination": "/api/insta.js"
+      "source": "/api/pin",
+      "destination": "/api/pin.js"
     },
     {
       "source": "/api/pin/video",
