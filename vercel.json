@@ -9,23 +9,21 @@
       "maxDuration": 30,
       "memory": 1024
     },
+    "api/insta/video.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
     "api/pin.js": {
       "maxDuration": 30,
       "memory": 1024
     },
-    "api/health.js": {
-      "maxDuration": 10
+    "api/pin/video.js": {
+      "maxDuration": 30,
+      "memory": 1024
     }
   },
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Credentials", "value": "true" },
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" }
-      ]
-    }
+  "rewrites": [
+    { "source": "/api/insta/video", "dest": "/api/insta.js" },
+    { "source": "/api/pin/video", "dest": "/api/pin.js" }
   ]
 }
