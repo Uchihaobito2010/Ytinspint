@@ -1,7 +1,6 @@
 {
   "name": "pinterest-downloader-api",
   "version": "2.0.0",
-  "description": "Pinterest Image & Video Downloader API",
   "main": "api/pin.js",
   "scripts": {
     "dev": "vercel dev",
