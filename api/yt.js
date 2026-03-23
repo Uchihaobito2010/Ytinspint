@@ -19,7 +19,7 @@ app.get('/api/yt', async (req, res) => {
   try {
     const url = req.query.p || req.query.url;
     if (!url) {
-      return res.status(400).json({ success: false, error: 'Please provide video URL using ?p= parameter', developer: DEV_INFO });
+      return res.status(400).json({ success: false, error: 'Please provide video URL', developer: DEV_INFO });
     }
 
     const videoId = extractVideoId(url);
@@ -66,158 +66,86 @@ function extractVideoId(url) {
 
 async function downloadYouTube(videoId) {
   try {
-    // Using multiple working download APIs
-    const methods = [
-      () => downloadViaY2mate(videoId),
-      () => downloadViaYt1s(videoId),
-      () => downloadViaSaveFrom(videoId)
+    // Using multiple working download services
+    const services = [
+      { name: 'yt5s', url: 'https://yt5s.com/api/ajaxSearch' },
+      { name: 'yt1s', url: 'https://yt1s.com/api/ajaxSearch/index' },
+      { name: 'y2mate', url: 'https://www.y2mate.com/mates/analyze/ajax' }
     ];
     
-    for (const method of methods) {
+    for (const service of services) {
       try {
-        const result = await method();
+        const result = await tryDownloadService(service, videoId);
         if (result && result.videos && result.videos.length > 0) {
           return result;
         }
       } catch (err) {
-        console.log(`Method failed: ${err.message}`);
+        console.log(`${service.name} failed:`, err.message);
         continue;
       }
     }
     
-    throw new Error('No video URLs found');
+    throw new Error('No video URLs found. The video might be private or age-restricted.');
   } catch (error) {
-    throw new Error(`Download failed: ${error.message}`);
+    throw new Error(`Failed to download: ${error.message}`);
   }
 }
 
-async function downloadViaY2mate(videoId) {
-  try {
-    // Get video page
-    const response = await axios.get(`https://www.y2mate.com/mates/analyze/ajax`, {
-      params: {
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        q_auto: 1,
-        ajax: 1
-      },
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://www.y2mate.com/'
-      }
-    });
-    
-    if (response.data && response.data.result) {
-      const html = response.data.result;
-      const titleMatch = html.match(/<div class="caption">(.+?)<\/div>/);
-      const title = titleMatch ? titleMatch[1] : 'YouTube Video';
-      
-      // Extract video URLs
-      const videoUrls = [];
-      const mp4Matches = html.match(/<a[^>]*href="([^"]+mp4[^"]+)"[^>]*>/gi);
-      
-      if (mp4Matches) {
-        mp4Matches.forEach(match => {
-          const urlMatch = match.match(/href="([^"]+)"/);
-          if (urlMatch) {
-            let url = urlMatch[1];
-            url = url.replace(/\\/g, '');
-            videoUrls.push({
-              quality: 'HD',
-              url: url,
-              type: 'video'
-            });
-          }
+async function tryDownloadService(service, videoId) {
+  const formData = new URLSearchParams();
+  formData.append('url', `https://www.youtube.com/watch?v=${videoId}`);
+  formData.append('ajax', '1');
+  
+  const response = await axios.post(service.url, formData, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    timeout: 15000
+  });
+  
+  const data = response.data;
+  const videos = [];
+  
+  // Parse different response formats
+  if (data.links && data.links.mp4) {
+    for (const [quality, link] of Object.entries(data.links.mp4)) {
+      if (link && link.k) {
+        videos.push({
+          quality: quality,
+          url: `https://yt5s.com/api/ajaxConvert/convert?vid=${data.vid}&k=${link.k}`,
+          type: 'video'
         });
       }
-      
-      return {
-        title: title,
-        thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        videoId: videoId,
-        videos: videoUrls
-      };
     }
-    throw new Error('No data from y2mate');
-  } catch (error) {
-    console.log('Y2mate error:', error.message);
-    throw error;
-  }
-}
-
-async function downloadViaYt1s(videoId) {
-  try {
-    const formData = new URLSearchParams();
-    formData.append('url', `https://www.youtube.com/watch?v=${videoId}`);
-    formData.append('q_auto', '0');
-    formData.append('ajax', '1');
-    
-    const response = await axios.post('https://yt1s.com/api/ajaxSearch/index', formData, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
-    });
-    
-    if (response.data && response.data.links) {
-      const videos = [];
-      const mp4Links = response.data.links.mp4;
-      
-      for (const [quality, link] of Object.entries(mp4Links)) {
-        if (link && link.k && link.k !== '') {
+  } else if (data.result) {
+    // Parse HTML result for video URLs
+    const html = data.result;
+    const urlMatches = html.match(/href="([^"]+\.mp4[^"]+)"/gi);
+    if (urlMatches) {
+      urlMatches.forEach(match => {
+        const urlMatch = match.match(/href="([^"]+)"/);
+        if (urlMatch) {
           videos.push({
-            quality: quality,
-            url: `https://yt1s.com/api/ajaxConvert/convert?vid=${response.data.vid}&k=${link.k}`,
+            quality: 'HD',
+            url: urlMatch[1],
             type: 'video'
           });
         }
-      }
-      
-      return {
-        title: response.data.title || 'YouTube Video',
-        thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        videoId: videoId,
-        videos: videos
-      };
+      });
     }
-    throw new Error('No links found');
-  } catch (error) {
-    console.log('Yt1s error:', error.message);
-    throw error;
   }
-}
-
-async function downloadViaSaveFrom(videoId) {
-  try {
-    const response = await axios.post('https://en.savefrom.net/1-ajax/', 
-      new URLSearchParams({
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        ajax: '1'
-      }),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      }
-    );
-    
-    if (response.data && response.data.url) {
-      return {
-        title: response.data.meta?.title || 'YouTube Video',
-        thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        videoId: videoId,
-        videos: [{
-          quality: 'HD',
-          url: response.data.url,
-          type: 'video'
-        }]
-      };
-    }
-    throw new Error('No URL found');
-  } catch (error) {
-    console.log('SaveFrom error:', error.message);
-    throw error;
+  
+  if (videos.length === 0) {
+    throw new Error('No video URLs found');
   }
+  
+  return {
+    title: data.title || data.meta?.title || 'YouTube Video',
+    thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+    videoId: videoId,
+    videos: videos
+  };
 }
 
 module.exports = app;
