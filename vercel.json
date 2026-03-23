@@ -5,11 +5,5 @@
       "maxDuration": 30,
       "memory": 1024
     }
-  },
-  "rewrites": [
-    {
-      "source": "/api/pin/video",
-      "destination": "/api/pin.js"
-    }
-  ]
+  }
 }
