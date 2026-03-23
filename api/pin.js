@@ -15,8 +15,6 @@ const DEV_INFO = {
   github: "Uchihaobito2010"
 };
 
-// ============= PINTEREST IMAGE ENDPOINT =============
-// For images only: /api/pin?p={url}
 app.get('/api/pin', async (req, res) => {
   try {
     const url = req.query.p || req.query.url;
@@ -40,8 +38,6 @@ app.get('/api/pin', async (req, res) => {
   }
 });
 
-// ============= PINTEREST VIDEO ENDPOINT =============
-// For videos only: /api/pin?v={url}
 app.get('/api/pin/video', async (req, res) => {
   try {
     const url = req.query.v || req.query.url;
@@ -65,7 +61,6 @@ app.get('/api/pin/video', async (req, res) => {
   }
 });
 
-// POST endpoints
 app.post('/api/pin', async (req, res) => {
   try {
     const url = req.body.p || req.body.url;
@@ -108,7 +103,6 @@ app.post('/api/pin/video', async (req, res) => {
   }
 });
 
-// Pinterest Image Downloader
 async function downloadPinterestImage(url) {
   try {
     url = url.split('?')[0];
@@ -118,7 +112,6 @@ async function downloadPinterestImage(url) {
     let imageUrl = null;
     let title = 'Pinterest Image';
     
-    // Method 1: Widget API
     if (pinId) {
       try {
         const response = await axios.get(`https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids=${pinId}`, {
@@ -130,7 +123,6 @@ async function downloadPinterestImage(url) {
           const pin = response.data.data[0];
           title = pin.title || pin.description || 'Pinterest Image';
           
-          // Get highest quality image
           if (pin.images?.orig?.url) {
             imageUrl = pin.images.orig.url;
           } else if (pin.images?.564x?.url) {
@@ -142,7 +134,6 @@ async function downloadPinterestImage(url) {
       } catch (err) {}
     }
     
-    // Method 2: Direct scraping
     if (!imageUrl) {
       const response = await axios.get(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
@@ -151,7 +142,6 @@ async function downloadPinterestImage(url) {
       const $ = cheerio.load(response.data);
       title = $('title').text().replace(' - Pinterest', '') || 'Pinterest Image';
       
-      // Get highest quality image
       imageUrl = $('meta[property="og:image"]').attr('content') ||
                  $('img[src*="originals"]').first().attr('src') ||
                  $('img[src*="736x"]').first().attr('src');
@@ -175,7 +165,6 @@ async function downloadPinterestImage(url) {
   }
 }
 
-// Pinterest Video Downloader
 async function downloadPinterestVideo(url) {
   try {
     url = url.split('?')[0];
@@ -186,7 +175,6 @@ async function downloadPinterestVideo(url) {
     let title = 'Pinterest Video';
     let thumbnail = null;
     
-    // Method 1: Widget API
     if (pinId) {
       try {
         const response = await axios.get(`https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids=${pinId}`, {
@@ -199,7 +187,6 @@ async function downloadPinterestVideo(url) {
           title = pin.title || pin.description || 'Pinterest Video';
           thumbnail = pin.images?.orig?.url;
           
-          // Get video URL
           if (pin.video_url) {
             videoUrl = pin.video_url;
             if (videoUrl.includes('.m3u8')) {
@@ -210,7 +197,6 @@ async function downloadPinterestVideo(url) {
       } catch (err) {}
     }
     
-    // Method 2: Direct scraping
     if (!videoUrl) {
       const response = await axios.get(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
@@ -220,7 +206,6 @@ async function downloadPinterestVideo(url) {
       title = $('title').text().replace(' - Pinterest', '') || 'Pinterest Video';
       thumbnail = $('meta[property="og:image"]').attr('content');
       
-      // Look for video URL
       $('video source').each((i, el) => {
         const src = $(el).attr('src');
         if (src && src.includes('.mp4')) videoUrl = src;
@@ -238,7 +223,6 @@ async function downloadPinterestVideo(url) {
                    $('meta[property="og:video:secure_url"]').attr('content');
       }
       
-      // Check scripts
       if (!videoUrl) {
         const scripts = $('script').get();
         for (const script of scripts) {
